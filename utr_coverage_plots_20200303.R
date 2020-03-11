@@ -124,6 +124,8 @@ full_tab = rbindlist(res_list)
 # Can we get STOP codon locations from gtf file?
 
 library(data.table)
+library(here)
+
 gtf = fread(here::here("Danio_rerio.GRCz11.99.gtf"), header=FALSE)
 
 gtf_col_names = c(
@@ -260,6 +262,41 @@ bed_tab = goi_tab[, list(chromosome=sequence,
 
 fwrite(bed_tab[, -"row_index"], file=here::here("utr_test_regions_bed_20200311.txt"), 
        sep="\t", col.names=FALSE)
+
+
+#-------------------------------------------------------------------------------
+# Load coverage data (from bedtools coverage).
+library(data.table)
+library(here)
+library(ggplot2)
+
+tmp = fread(here::here("subset_bams_utr_test", 
+                       "14893X1_utr_test_regions_pos_coverage.txt.gz"))
+
+
+p1 = ggplot(tmp, aes(x=V7, y=V8)) +
+     geom_line() +
+     facet_wrap(~ V4, scales="free", ncol=2)
+
+ggsave(file=here("subset_bams_utr_test",
+                 "X1_pos_coverage_test_regions_20200311.pdf"),
+       plot=p1, width=10, height=12)
+
+
+h1 = ggplot(tmp, aes(x=V8)) +
+  geom_histogram(colour="grey30", fill="grey80", bins=100) +
+  facet_wrap(~ V4, scales="free", ncol=2)
+
+ggsave(file=here("subset_bams_utr_test",
+                 "X1_pos_coverage_test_regions_histograms_20200311.pdf"),
+       plot=h1, width=10, height=12)
+
+
+
+
+
+
+
 
 
 
