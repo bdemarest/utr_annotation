@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.Ruserdata
+**/*.Rproj
+**/*.gtf
+**/*.bam
+**/*.bai
+**/.DS_Store
+Danio_rerio.GRCz11.99.gtf
+
+.RData
