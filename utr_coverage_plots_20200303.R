@@ -2,6 +2,16 @@
 # Evaluate heuristic 3' UTR extension.
 # Test using z10 STAR bam files.
 
+# Github notes.
+# When you have an existing Rstudio project that you want to bring 
+# into git and github:
+# (Assuming you have GITHUB_PAT in your ~/.Renviron folder)
+
+# (1) Add project to local git (Git tab will now appear in Rstudio window).
+# usethis::use_git()
+# (2) Create github repository, commit, and push to github.
+# usethis::use_github()
+
 
 library(data.table)
 library(ggplot2)
@@ -139,7 +149,7 @@ gtf[nchar(transcript_id) > 18, transcript_id:=NA_character_]
 
 gtf[, gene_name:=gsub('^.+; gene_name \\"(.+?)\\"; .+$', "\\1", attributes)]
 
-gtf[, gene_biotype:=gsub('^.+; gene_biotype \\"(.+?)\\"; .+$', "\\1", attributes)]
+gtf[, gene_biotype:=gsub('^.+; gene_biotype \\"(.+?)\\";.*$', "\\1", attributes)]
 
 gtf[, transcript_biotype:=gsub('^.+; transcript_biotype \\"(.+?)\\"; .+$', "\\1", attributes)]
 gtf[nchar(transcript_biotype) > 34, transcript_biotype:=NA_character_]
@@ -153,15 +163,105 @@ dim(gtf)
 # [1] 1161865      12
 
 # Table of annotated stop_codon positions from 
-subtab = gtf[feature == "stop_codon",
-             list(sequence, start, end, strand, gene_id,
-                  transcript_id, gene_name, gene_biotype, transcript_biotype)]
+stop_tab = gtf[feature == "stop_codon",
+             list(sequence, stop_codon_start=start, stop_codon_end=end, 
+                  strand, gene_id, transcript_id, gene_name, 
+                  gene_biotype, transcript_biotype)]
+
+utr_tab = gtf[feature == "three_prime_utr",
+             list(sequence, three_prime_utr_start=start, three_prime_utr_end=end, 
+                  strand, gene_id, transcript_id, gene_name, 
+                  gene_biotype, transcript_biotype)]
+
+subtab = merge(x=stop_tab, y=utr_tab, all.x=TRUE, all.y=TRUE)
+
+#----------------
+# n = 24007 unique ensembl gene ids have associated stop codon.
+length(unique(stop_tab$gene_id))
+# Out of 25432 protein coding genes in the full gtf file.
+length(unique(gtf[feature == "gene" & gene_biotype == "protein_coding", gene_id]))
+
+
+# We only have 39559 transcripts with associated stop codons.
+length(unique(stop_tab$transcript_id))
+# [1] 39559
+length(unique(gtf$transcript_id))
+# [1] 59877
+
+# Example: ptpn12 ENSDARG00000102141 is annotated as protein coding,
+# and has a refseq predicted protein sequence, but has no
+# ensembl annotated utrs, nor stop codon.
+
+# missing transcript ids.
+mtxid_vec = setdiff(unique(gtf$transcript_id), unique(stop_tab$transcript_id))
+
+mtx_tab = gtf[transcript_id %in% mtxid_vec]
+# ?? Why are rows with NA transcript id showing up in this table??
+
+#----------------
+
+# > dim(subtab)
+# [1] 43636    11
+# > length(unique(subtab$transcript_id))
+# [1] 39689
+# > dim(stop_tab)
+# [1] 39635     9
+# > length(unique(stop_tab$transcript_id))
+# [1] 39559
+# > dim(utr_tab)
+# [1] 34772     9
+# > length(unique(utr_tab$transcript_id))
+# [1] 30928
+# > 43636 - 39689
+# [1] 3947
+
+# Many transcript ids have more than one associated utr.
+# A few transcript ids have more than one associated stop codon.
+
+#----------------
 
 # How many gene_name have multiple gene_id?
 gid_tab = gtf[feature == "gene", list(n_gene_id=length(unique(gene_id))), by=gene_name]
+table(gid_tab$n_gene_id)
+#     1     2     3     4     5     6     8     9    10    18    19    24 
+# 31256   474    47     8     5     2     2     1     2     1     1     1 
 
-
+# For example, 
+gid_tab[n_gene_id == 24]
+#    gene_name n_gene_id
+# 1:  hist1h4l        24
 #===============================================================================
+# Move forward with subtab table of stop codon and utr positions.
+
+# Load bed file of test genes of interest.
+# (These are the only regions with reads in the subsetted test bam files).
+goi = fread(here::here("subset_bams_utr_test", "utr_test_myl6_tbx5a_robo4_bed.txt"))
+setnames(goi, c("chromosome", "start", "end", "external_gene_name"))
+
+goi_tab = subtab[gene_name %in% goi$external_gene_name]
+# Add column of unique row index values.
+goi_tab[, row_index:=.I]
+
+# Try bedtools coverage.
+# Make a regions bed file.
+
+# Bed file header:
+# chromosome, start, end, name, score, strand
+
+# Only used for pulling coverage out of bam files using bedtools.
+# (Can also use this exact bed file to subset the bams using samtools).
+bed_tab = goi_tab[, list(chromosome=sequence,
+                         start=min(stop_codon_start, three_prime_utr_start) - 1e4,
+                         end=max(stop_codon_end, three_prime_utr_end) + 1e4,
+                         name=paste(gene_name, transcript_id, sep="_"),
+                         score=0L,
+                         strand=strand),
+                  by=row_index]
+
+fwrite(bed_tab[, -"row_index"], file=here::here("utr_test_regions_bed_20200311.txt"), 
+       sep="\t", col.names=FALSE)
+
+
 
 
 
